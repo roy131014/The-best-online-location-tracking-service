@@ -2,9 +2,8 @@
 <html lang="ko">
 <head>
 <meta charset="UTF-8">
-<title>위치 추적 앱</title>
+<title>실시간 위치 추적 앱</title>
 
-<!-- Leaflet -->
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
@@ -23,21 +22,14 @@ body {
   margin-top:20px;
 }
 
-input {
-  padding:8px;
-  width:200px;
-}
-
-button {
-  padding:8px 12px;
-  cursor:pointer;
-}
+input { padding:8px; width:200px; }
+button { padding:8px 12px; cursor:pointer; }
 </style>
 </head>
 
 <body>
 
-<h2>📍 위치 추적 앱</h2>
+<h2>📍 실시간 위치 추적 앱</h2>
 
 <input id="id" placeholder="아이디">
 <input id="pw" type="password" placeholder="비밀번호">
@@ -45,7 +37,9 @@ button {
 <button id="signup">회원가입</button>
 <button id="login">로그인</button>
 <button id="logout">로그아웃</button>
-<button id="getLocation">위치 가져오기</button>
+
+<button id="startTracking">▶️ 추적 시작</button>
+<button id="stopTracking">⏹ 추적 정지</button>
 
 <div id="status">로그인 안됨</div>
 <div id="map"></div>
@@ -57,10 +51,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const START_KEY = "start_time";
 
   let currentUser = null;
+  let watchId = null;
+  let path = [];
+
   let map = L.map('map').setView([37.5665, 126.9780], 13);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png')
     .addTo(map);
+
+  let polyline = L.polyline([], {color:'blue'}).addTo(map);
 
   // ------------------------
   // 유저 관리
@@ -126,9 +125,7 @@ document.addEventListener("DOMContentLoaded", () => {
     setStatus("로그아웃됨");
   };
 
-  // ------------------------
   // 자동 로그인
-  // ------------------------
   const savedId = localStorage.getItem("currentUser");
   if (savedId) {
     const user = getUsers().find(u => u.id === savedId);
@@ -140,9 +137,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ------------------------
-  // 위치 버튼
+  // 🔥 추적 시작
   // ------------------------
-  document.getElementById("getLocation").onclick = () => {
+  document.getElementById("startTracking").onclick = () => {
 
     let startTime = localStorage.getItem(START_KEY);
     const now = Date.now();
@@ -159,19 +156,46 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
-    navigator.geolocation.getCurrentPosition(pos => {
+    if (!navigator.geolocation) {
+      alert("위치 지원 안됨");
+      return;
+    }
 
-      const lat = pos.coords.latitude;
-      const lng = pos.coords.longitude;
+    watchId = navigator.geolocation.watchPosition(position => {
 
-      map.setView([lat, lng], 15);
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+
+      path.push([lat, lng]);
+
+      map.setView([lat, lng], 16);
       L.marker([lat, lng]).addTo(map);
+
+      polyline.setLatLngs(path);
 
       if (currentUser) {
         saveLocation(lat, lng);
       }
 
+    }, err => {
+      alert(err.message);
+    }, {
+      enableHighAccuracy: true,
+      maximumAge: 0
     });
+
+    setStatus("🔴 실시간 추적 중...");
+  };
+
+  // ------------------------
+  // ⏹ 추적 정지
+  // ------------------------
+  document.getElementById("stopTracking").onclick = () => {
+    if (watchId !== null) {
+      navigator.geolocation.clearWatch(watchId);
+      watchId = null;
+      setStatus("⏹ 추적 중지됨");
+    }
   };
 
   // ------------------------
@@ -190,17 +214,17 @@ document.addEventListener("DOMContentLoaded", () => {
   // 위치 불러오기
   // ------------------------
   function loadUserLocations() {
-    map.eachLayer(layer => {
-      if (layer instanceof L.Marker) {
-        map.removeLayer(layer);
-      }
-    });
+    path = [];
 
     currentUser.locations.forEach(loc => {
+      path.push([loc.lat, loc.lng]);
+
       L.marker([loc.lat, loc.lng])
         .addTo(map)
         .bindPopup(loc.time);
     });
+
+    polyline.setLatLngs(path);
   }
 
 });
